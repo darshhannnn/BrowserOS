@@ -21,6 +21,16 @@
       "os": ["macos"],
       "arch": ["x64"],
       "executable": true
+    },
+    {
+      "name": "BrowserOS VM Lima template",
+      "source": {
+        "type": "local",
+        "path": "packages/build-tools/template/browseros-vm.yaml"
+      },
+      "destination": "resources/vm/browseros-vm.yaml",
+      "os": ["macos"],
+      "arch": ["arm64", "x64"]
     }
   ]
 }

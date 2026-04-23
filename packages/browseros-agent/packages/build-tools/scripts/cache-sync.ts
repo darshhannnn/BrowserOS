@@ -6,7 +6,7 @@ import { parseArgs } from 'node:util'
 import { PATHS } from '@browseros/shared/constants/paths'
 import { ARCHES, type Arch } from './common/arch'
 import { fetchWithTimeout } from './common/fetch'
-import type { Artifact, VmManifest } from './common/manifest'
+import type { AgentManifest, Artifact } from './common/manifest'
 import { verifySha256 } from './common/sha256'
 
 type ChunkSink = ReturnType<ReturnType<typeof Bun.file>['writer']>
@@ -18,20 +18,13 @@ export interface PlanItem {
 }
 
 export function planSync(opts: {
-  local: VmManifest | null
-  remote: VmManifest
+  local: AgentManifest | null
+  remote: AgentManifest
   cacheRoot: string
   arches: Arch[]
 }): PlanItem[] {
   const out: PlanItem[] = []
   for (const arch of opts.arches) {
-    maybeAdd(
-      out,
-      opts.remote.vmDisk[arch],
-      opts.local?.vmDisk[arch],
-      opts.cacheRoot,
-    )
-
     for (const [name, agent] of Object.entries(opts.remote.agents)) {
       maybeAdd(
         out,
@@ -76,20 +69,18 @@ if (import.meta.main) {
       `manifest fetch failed: ${manifestUrl} (${response.status})`,
     )
   }
-  const remote = (await response.json()) as VmManifest
+  const remote = (await response.json()) as AgentManifest
 
   const localManifestPath = path.join(cacheRoot, 'vm', 'manifest.json')
   const local = await readLocalManifest(localManifestPath)
   const plan = planSync({ local, remote, cacheRoot, arches })
 
   if (plan.length === 0) {
-    console.log(`cache up to date at vmVersion ${remote.vmVersion}`)
+    console.log('agent cache up to date')
     process.exit(0)
   }
 
-  console.log(
-    `syncing ${plan.length} artifact(s) for vmVersion ${remote.vmVersion}`,
-  )
+  console.log(`syncing ${plan.length} agent artifact(s)`)
   for (const item of plan) {
     await mkdir(path.dirname(item.destPath), { recursive: true })
     const partial = `${item.destPath}.partial`
@@ -128,9 +119,9 @@ function getCacheDir(): string {
 
 export async function readLocalManifest(
   manifestPath: string,
-): Promise<VmManifest | null> {
+): Promise<AgentManifest | null> {
   try {
-    return JSON.parse(await readFile(manifestPath, 'utf8')) as VmManifest
+    return JSON.parse(await readFile(manifestPath, 'utf8')) as AgentManifest
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
     throw error

@@ -8,7 +8,7 @@ import {
   readLocalManifest,
   selectSyncArches,
 } from '../scripts/cache-sync'
-import type { VmManifest } from '../scripts/common/manifest'
+import type { AgentManifest } from '../scripts/common/manifest'
 import { sha256File } from '../scripts/common/sha256'
 
 const openclaw = {
@@ -16,44 +16,52 @@ const openclaw = {
   version: '2026.4.12',
 }
 
-function manifest(
-  vmVersion: string,
-  diskSha: string,
-  tarSha: string,
-): VmManifest {
-  return {
-    schemaVersion: 1,
-    vmVersion,
-    updatedAt: '2026-04-22T00:00:00.000Z',
-    vmDisk: {
-      arm64: {
-        key: `vm/browseros-vm-${vmVersion}-arm64.qcow2.zst`,
-        sha256: `${diskSha}-arm64`,
-        sizeBytes: 101,
-      },
-      x64: {
-        key: `vm/browseros-vm-${vmVersion}-x64.qcow2.zst`,
-        sha256: `${diskSha}-x64`,
-        sizeBytes: 102,
-      },
-    },
-    agents: {
-      openclaw: {
-        ...openclaw,
-        tarballs: {
-          arm64: {
-            key: 'vm/images/openclaw-2026.4.12-arm64.tar.gz',
-            sha256: `${tarSha}-arm64`,
-            sizeBytes: 201,
-          },
-          x64: {
-            key: 'vm/images/openclaw-2026.4.12-x64.tar.gz',
-            sha256: `${tarSha}-x64`,
-            sizeBytes: 202,
-          },
+const claudeCode = {
+  image: 'ghcr.io/anthropics/claude-code',
+  version: '2026.4.10',
+}
+
+function manifest(tarSha: string, includeSecondAgent = false): AgentManifest {
+  const agents: AgentManifest['agents'] = {
+    openclaw: {
+      ...openclaw,
+      tarballs: {
+        arm64: {
+          key: 'vm/images/openclaw-2026.4.12-arm64.tar.gz',
+          sha256: `${tarSha}-arm64`,
+          sizeBytes: 201,
+        },
+        x64: {
+          key: 'vm/images/openclaw-2026.4.12-x64.tar.gz',
+          sha256: `${tarSha}-x64`,
+          sizeBytes: 202,
         },
       },
     },
+  }
+
+  if (includeSecondAgent) {
+    agents['claude-code'] = {
+      ...claudeCode,
+      tarballs: {
+        arm64: {
+          key: 'vm/images/claude-code-2026.4.10-arm64.tar.gz',
+          sha256: `${tarSha}-claude-arm64`,
+          sizeBytes: 301,
+        },
+        x64: {
+          key: 'vm/images/claude-code-2026.4.10-x64.tar.gz',
+          sha256: `${tarSha}-claude-x64`,
+          sizeBytes: 302,
+        },
+      },
+    }
+  }
+
+  return {
+    schemaVersion: 2,
+    updatedAt: '2026-04-22T00:00:00.000Z',
+    agents,
   }
 }
 
@@ -62,36 +70,33 @@ function keys(plan: PlanItem[]): string[] {
 }
 
 describe('planSync', () => {
-  it('downloads every selected-arch artifact for a fresh cache', () => {
-    const remote = manifest('2026.04.22', 'd1', 't1')
+  it('downloads every selected-arch agent artifact for a fresh cache', () => {
+    const remote = manifest('t1')
 
     expect(
       keys(planSync({ local: null, remote, cacheRoot: '/c', arches: ['x64'] })),
-    ).toEqual([
-      'vm/browseros-vm-2026.04.22-x64.qcow2.zst',
-      'vm/images/openclaw-2026.4.12-x64.tar.gz',
-    ])
+    ).toEqual(['vm/images/openclaw-2026.4.12-x64.tar.gz'])
   })
 
   it('does nothing when the local manifest matches the remote manifest', () => {
-    const remote = manifest('2026.04.22', 'd1', 't1')
+    const remote = manifest('t1')
 
     expect(
       planSync({ local: remote, remote, cacheRoot: '/c', arches: ['x64'] }),
     ).toEqual([])
   })
 
-  it('downloads only artifacts whose sha256 changed', () => {
-    const local = manifest('2026.04.20', 'd-old', 't1')
-    const remote = manifest('2026.04.22', 'd-new', 't1')
+  it('downloads only agent artifacts whose sha256 changed', () => {
+    const local = manifest('old-tar')
+    const remote = manifest('new-tar')
 
     expect(
       keys(planSync({ local, remote, cacheRoot: '/c', arches: ['x64'] })),
-    ).toEqual(['vm/browseros-vm-2026.04.22-x64.qcow2.zst'])
+    ).toEqual(['vm/images/openclaw-2026.4.12-x64.tar.gz'])
   })
 
   it('supports syncing all release arches', () => {
-    const remote = manifest('2026.04.22', 'd1', 't1')
+    const remote = manifest('t1')
 
     expect(
       planSync({
@@ -100,7 +105,7 @@ describe('planSync', () => {
         cacheRoot: '/c',
         arches: ['arm64', 'x64'],
       }),
-    ).toHaveLength(4)
+    ).toHaveLength(2)
   })
 
   it('selects host arch by default and both arches when requested', () => {
@@ -144,43 +149,31 @@ describe('emit-manifest', () => {
     dir = null
   })
 
-  it('merges a vm slice while preserving agents from the baseline', async () => {
+  it('rejects the retired vm slice', async () => {
     dir = await mkdtemp(path.join(tmpdir(), 'browseros-emit-vm-'))
-    const distDir = path.join(dir, 'dist')
-    await writeVmFiles(distDir)
 
-    const baseline = manifest('2026.04.20', 'old-disk', 'old-tar')
-    const baselinePath = path.join(dir, 'baseline.json')
-    const outPath = path.join(dir, 'manifest.json')
-    await writeJson(baselinePath, baseline)
-
-    await runEmitManifest([
-      '--slice',
-      'vm',
-      '--dist-dir',
-      distDir,
-      '--merge-from',
-      baselinePath,
-      '--out',
-      outPath,
-    ])
-
-    const merged = JSON.parse(await readFile(outPath, 'utf8')) as VmManifest
-    expect(merged.vmVersion).toBe('2026.04.22')
-    expect(merged.agents).toEqual(baseline.agents)
-    expect(merged.vmDisk.x64.sha256).toBe(
-      await sha256File(
-        path.join(distDir, 'browseros-vm-2026.04.22-x64.qcow2.zst'),
-      ),
+    const result = await runEmitManifest(
+      [
+        '--slice',
+        'vm',
+        '--dist-dir',
+        path.join(dir, 'dist'),
+        '--out',
+        path.join(dir, 'manifest.json'),
+      ],
+      false,
     )
+
+    expect(result.code).toBe(1)
+    expect(result.stderr).toContain('unknown slice: vm')
   })
 
-  it('merges an agent slice while preserving vmDisk from the baseline', async () => {
+  it('merges an agent slice while preserving other agents from the baseline', async () => {
     dir = await mkdtemp(path.join(tmpdir(), 'browseros-emit-agent-'))
     const distDir = path.join(dir, 'dist')
     await writeAgentFiles(distDir)
 
-    const baseline = manifest('2026.04.20', 'old-disk', 'old-tar')
+    const baseline = manifest('old-tar', true)
     const baselinePath = path.join(dir, 'baseline.json')
     const outPath = path.join(dir, 'manifest.json')
     await writeJson(baselinePath, baseline)
@@ -196,9 +189,9 @@ describe('emit-manifest', () => {
       outPath,
     ])
 
-    const merged = JSON.parse(await readFile(outPath, 'utf8')) as VmManifest
-    expect(merged.vmVersion).toBe('2026.04.20')
-    expect(merged.vmDisk).toEqual(baseline.vmDisk)
+    const merged = JSON.parse(await readFile(outPath, 'utf8')) as AgentManifest
+    expect(merged.schemaVersion).toBe(2)
+    expect(merged.agents['claude-code']).toEqual(baseline.agents['claude-code'])
     expect(merged.agents.openclaw.tarballs.arm64.sha256).toBe(
       await sha256File(
         path.join(distDir, 'images/openclaw-2026.4.12-arm64.tar.gz'),
@@ -208,15 +201,13 @@ describe('emit-manifest', () => {
 
   it('fails slice emission without a merge baseline', async () => {
     dir = await mkdtemp(path.join(tmpdir(), 'browseros-emit-fail-'))
-    const distDir = path.join(dir, 'dist')
-    await writeVmFiles(distDir)
 
     const result = await runEmitManifest(
       [
         '--slice',
-        'vm',
+        'agents:openclaw',
         '--dist-dir',
-        distDir,
+        path.join(dir, 'dist'),
         '--out',
         path.join(dir, 'out.json'),
       ],
@@ -224,21 +215,11 @@ describe('emit-manifest', () => {
     )
 
     expect(result.code).toBe(1)
-    expect(result.stderr).toContain('--slice vm requires --merge-from')
+    expect(result.stderr).toContain(
+      '--slice agents:openclaw requires --merge-from',
+    )
   })
 })
-
-async function writeVmFiles(distDir: string): Promise<void> {
-  await mkdir(distDir, { recursive: true })
-  await writeFile(
-    path.join(distDir, 'browseros-vm-2026.04.22-arm64.qcow2.zst'),
-    'arm disk',
-  )
-  await writeFile(
-    path.join(distDir, 'browseros-vm-2026.04.22-x64.qcow2.zst'),
-    'x64 disk',
-  )
-}
 
 async function writeAgentFiles(distDir: string): Promise<void> {
   await mkdir(path.join(distDir, 'images'), { recursive: true })

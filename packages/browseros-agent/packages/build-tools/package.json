@@ -5,14 +5,12 @@
   "type": "module",
   "description": "BrowserOS release artifact producer and dev cache sync",
   "scripts": {
-    "build:disk": "bun run scripts/build-disk.ts",
     "build:tarball": "bun run scripts/build-tarball.ts",
     "emit-manifest": "bun run scripts/emit-manifest.ts",
     "upload": "bun run scripts/upload-to-r2.ts",
     "download": "bun run scripts/download-from-r2.ts",
     "cache:sync": "bun run scripts/cache-sync.ts",
     "smoke:tarball": "bun run scripts/smoke-tarball.ts",
-    "smoke:vm": "bun run scripts/smoke-vm.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },

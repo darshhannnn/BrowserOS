@@ -2,18 +2,16 @@
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
-import { ARCHES, type Arch } from './common/arch'
+import { ARCHES } from './common/arch'
 import { fetchWithTimeout } from './common/fetch'
 import {
   type AgentEntry,
-  type Artifact,
+  type AgentManifest,
   type ArtifactInputs,
   type Bundle,
   type BundleAgent,
   buildManifest,
-  qcow2Key,
   tarballKey,
-  type VmManifest,
 } from './common/manifest'
 import { sha256File } from './common/sha256'
 
@@ -34,6 +32,10 @@ const bundle = JSON.parse(
   await readFile(path.join(pkgRoot, 'bundle.json'), 'utf8'),
 ) as Bundle
 
+if (slice !== 'full' && !slice.startsWith('agents:')) {
+  throw new Error(`unknown slice: ${slice}`)
+}
+
 const baseline = values['merge-from']
   ? await loadBaseline(values['merge-from'])
   : null
@@ -51,8 +53,8 @@ async function buildSlicedManifest(opts: {
   bundle: Bundle
   distDir: string
   slice: string
-  baseline: VmManifest | null
-}): Promise<VmManifest> {
+  baseline: AgentManifest | null
+}): Promise<AgentManifest> {
   if (opts.slice === 'full') {
     return buildManifest(
       opts.bundle,
@@ -64,16 +66,6 @@ async function buildSlicedManifest(opts: {
   if (!baseline) throw new Error(`--slice ${opts.slice} requires --merge-from`)
   const updatedAt = new Date().toISOString()
 
-  if (opts.slice === 'vm') {
-    return {
-      ...baseline,
-      schemaVersion: 1,
-      vmVersion: opts.bundle.vmVersion,
-      updatedAt,
-      vmDisk: await readVmDisk(opts.bundle.vmVersion, opts.distDir),
-    }
-  }
-
   if (opts.slice.startsWith('agents:')) {
     const name = opts.slice.slice('agents:'.length)
     const agent = opts.bundle.agents.find((entry) => entry.name === name)
@@ -81,6 +73,7 @@ async function buildSlicedManifest(opts: {
 
     return {
       ...baseline,
+      schemaVersion: 2,
       updatedAt,
       agents: {
         ...baseline.agents,
@@ -110,24 +103,8 @@ async function readAllInputs(
   }
 
   return {
-    vmDisk: await readArtifactInputs((arch) =>
-      path.join(distDir, path.basename(qcow2Key(bundle.vmVersion, arch))),
-    ),
     agents,
   }
-}
-
-async function readVmDisk(
-  vmVersion: string,
-  distDir: string,
-): Promise<Record<Arch, Artifact>> {
-  const vmDisk = {} as Record<Arch, Artifact>
-  for (const arch of ARCHES) {
-    const key = qcow2Key(vmVersion, arch)
-    const artifactPath = path.join(distDir, path.basename(key))
-    vmDisk[arch] = { key, ...(await readArtifactInput(artifactPath)) }
-  }
-  return vmDisk
 }
 
 async function readAgentEntry(
@@ -143,16 +120,6 @@ async function readAgentEntry(
   return { image: agent.image, version: agent.version, tarballs }
 }
 
-async function readArtifactInputs(
-  pathForArch: (arch: Arch) => string,
-): Promise<Record<Arch, { sha256: string; sizeBytes: number }>> {
-  const out = {} as Record<Arch, { sha256: string; sizeBytes: number }>
-  for (const arch of ARCHES) {
-    out[arch] = await readArtifactInput(pathForArch(arch))
-  }
-  return out
-}
-
 async function readArtifactInput(
   filePath: string,
 ): Promise<{ sha256: string; sizeBytes: number }> {
@@ -162,14 +129,14 @@ async function readArtifactInput(
   }
 }
 
-async function loadBaseline(src: string): Promise<VmManifest> {
+async function loadBaseline(src: string): Promise<AgentManifest> {
   if (src.startsWith('http://') || src.startsWith('https://')) {
     const response = await fetchWithTimeout(src)
     if (!response.ok) {
       throw new Error(`baseline fetch failed: ${src} (${response.status})`)
     }
-    return (await response.json()) as VmManifest
+    return (await response.json()) as AgentManifest
   }
 
-  return JSON.parse(await readFile(src, 'utf8')) as VmManifest
+  return JSON.parse(await readFile(src, 'utf8')) as AgentManifest
 }

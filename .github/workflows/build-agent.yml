@@ -16,7 +16,6 @@ on:
   pull_request:
     paths:
       - "packages/browseros-agent/packages/build-tools/**"
-      - "!packages/browseros-agent/packages/build-tools/scripts/build-disk.ts"
       - ".github/workflows/build-agent.yml"
 
 env:

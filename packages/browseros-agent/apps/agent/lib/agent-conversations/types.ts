@@ -50,4 +50,7 @@ export interface AgentCardData {
   status: 'idle' | 'working' | 'error'
   lastMessage?: string
   lastMessageTimestamp?: number
+  activitySummary?: string
+  currentTool?: string
+  costUsd?: number
 }

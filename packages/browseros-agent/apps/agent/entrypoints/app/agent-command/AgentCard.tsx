@@ -1,4 +1,4 @@
-import { Bot } from 'lucide-react'
+import { Bot, Loader2, Wrench } from 'lucide-react'
 import type { FC } from 'react'
 import type { AgentCardData } from '@/lib/agent-conversations/types'
 import { cn } from '@/lib/utils'
@@ -30,6 +30,11 @@ function getStatusTone(status: AgentCardData['status']): string {
   if (status === 'working') return 'bg-amber-500'
   if (status === 'error') return 'bg-destructive'
   return 'bg-emerald-500'
+}
+
+function formatCost(usd: number): string {
+  if (usd < 0.005) return `$${usd.toFixed(4)}`
+  return `$${usd.toFixed(2)}`
 }
 
 export const AgentCardExpanded: FC<AgentCardProps> = ({
@@ -81,9 +86,26 @@ export const AgentCardExpanded: FC<AgentCardProps> = ({
       </p>
     </div>
 
-    <div className="mt-4 flex items-center justify-between gap-3 text-muted-foreground text-xs">
-      <span>{formatTimestamp(agent.lastMessageTimestamp)}</span>
-      <span>Open conversation</span>
+    <div className="mt-4 space-y-1.5 text-muted-foreground text-xs">
+      <div className="flex items-center justify-between gap-3">
+        <span>{formatTimestamp(agent.lastMessageTimestamp)}</span>
+        {agent.costUsd ? (
+          <span className="tabular-nums opacity-70">
+            {formatCost(agent.costUsd)}
+          </span>
+        ) : null}
+      </div>
+      {agent.status === 'working' && agent.currentTool ? (
+        <div className="flex items-center gap-1.5 text-[var(--accent-orange)]/70">
+          <Loader2 className="size-3 shrink-0 animate-spin" />
+          <span className="truncate">{agent.currentTool}</span>
+        </div>
+      ) : agent.activitySummary ? (
+        <div className="flex items-center gap-1.5 text-muted-foreground/60">
+          <Wrench className="size-3 shrink-0" />
+          <span className="truncate">{agent.activitySummary}</span>
+        </div>
+      ) : null}
     </div>
   </button>
 )

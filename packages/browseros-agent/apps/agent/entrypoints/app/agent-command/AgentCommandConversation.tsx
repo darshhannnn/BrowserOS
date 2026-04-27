@@ -16,6 +16,7 @@ import {
 } from './claw-chat-types'
 import { useAgentConversation } from './useAgentConversation'
 import { useClawChatHistory } from './useClawChatHistory'
+import { useOutboundQueue } from './useOutboundQueue'
 
 function StatusBadge({ status }: { status: string }) {
   return (
@@ -216,16 +217,40 @@ function AgentConversationController({
   const resolvedSessionKey =
     streamSessionKey ?? historyQuery.data?.pages?.[0]?.sessionKey ?? null
 
-  const { turns, streaming, send } = useAgentConversation(agentId, {
+  const { turns, streaming } = useAgentConversation(agentId, {
     sessionKey: resolvedSessionKey,
     history: chatHistory,
     onSessionKeyChange: (sessionKey) => {
       setStreamSessionKey(sessionKey)
     },
   })
-  const sendRef = useRef(send)
-  sendRef.current = send
+  const outboundQueue = useOutboundQueue({
+    agentId,
+    sessionKey: resolvedSessionKey,
+  })
   onInitialMessageConsumedRef.current = onInitialMessageConsumed
+
+  // Refetch history whenever a server-dispatched queue item completes.
+  // The server worker streams the queued turn into OpenClaw directly, so
+  // the client never observes the live tokens — we only see the new
+  // assistant turn once the JSONL is updated. Watching the queue for
+  // any 'sending' item dropping out is the cleanest "turn finalized"
+  // signal we have without exposing per-turn SSE.
+  const previousSendingIdsRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const currentSending = new Set(
+      outboundQueue.queue
+        .filter((item) => item.status === 'sending')
+        .map((item) => item.id),
+    )
+    const dropped = [...previousSendingIdsRef.current].filter(
+      (id) => !currentSending.has(id),
+    )
+    previousSendingIdsRef.current = currentSending
+    if (dropped.length > 0) {
+      void historyQuery.refetch()
+    }
+  }, [outboundQueue.queue, historyQuery])
 
   const disabled = status?.status !== 'running'
   // Two-part gate: cover both "still fetching" AND "just got enabled but
@@ -242,6 +267,9 @@ function AgentConversationController({
     : null
   const error = historyQuery.error ?? null
 
+  const enqueueRef = useRef(outboundQueue.enqueue)
+  enqueueRef.current = outboundQueue.enqueue
+
   useEffect(() => {
     const query = initialMessage?.trim()
     if (!initialMessageKey) {
@@ -249,20 +277,24 @@ function AgentConversationController({
       return
     }
 
+    // The initial-message handoff (home composer → conversation page via
+    // ?q=) goes through the outbound queue too, so it inherits the same
+    // single-flight serialization. We no longer need to gate on
+    // `streaming` — the queue worker drains as soon as the agent is
+    // free.
     if (
       !query ||
       initialMessageSentRef.current === initialMessageKey ||
       disabled ||
-      !historyReady ||
-      streaming
+      !historyReady
     ) {
       return
     }
 
     initialMessageSentRef.current = initialMessageKey
     onInitialMessageConsumedRef.current()
-    void sendRef.current(query)
-  }, [disabled, historyReady, initialMessage, initialMessageKey, streaming])
+    enqueueRef.current({ text: query })
+  }, [disabled, historyReady, initialMessage, initialMessageKey])
 
   const handleSelectAgent = (entry: AgentEntry) => {
     navigate(`${agentPathPrefix}/${entry.agentId}`)
@@ -294,14 +326,28 @@ function AgentConversationController({
             agents={agents}
             selectedAgentId={agentId}
             onSelectAgent={handleSelectAgent}
-            onSend={(text) => {
-              void send(text)
+            onSend={(input) => {
+              outboundQueue.enqueue({
+                text: input.text,
+                attachments: input.attachments.map((a) => a.payload),
+                attachmentPreviews: input.attachments.map((a) => ({
+                  id: a.id,
+                  kind: a.kind,
+                  mediaType: a.mediaType,
+                  name: a.name,
+                  dataUrl: a.dataUrl,
+                })),
+                history: chatHistory,
+              })
             }}
             onCreateAgent={() => navigate(createAgentPath)}
             streaming={streaming}
             disabled={disabled}
             status={status?.status}
             placeholder={`Message ${agentName}...`}
+            outboundQueue={outboundQueue.queue}
+            onCancelQueued={outboundQueue.cancel}
+            onRetryQueued={outboundQueue.retry}
           />
         </div>
       </div>

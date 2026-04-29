@@ -3,8 +3,9 @@ import { type FC, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useLlmProviders } from '@/lib/llm-providers/useLlmProviders'
 import { AgentList } from './AgentList'
+import { AgentsHeader } from './AgentsHeader'
 import { AgentTerminal } from './AgentTerminal'
-import type { HarnessAgentAdapter } from './agent-harness-types'
+import type { HarnessAgent, HarnessAgentAdapter } from './agent-harness-types'
 import { createAgentPageActions } from './agents-page-actions'
 import {
   useDefaultAgentName,
@@ -29,9 +30,9 @@ import {
   toHarnessListItem,
   toOpenClawListItem,
 } from './agents-page-utils'
+import { GatewayStatusBar } from './GatewayStatusBar'
 import { NewAgentDialog } from './NewAgentDialog'
 import {
-  AgentsPageHeader,
   ControlPlaneAlert,
   GatewayStateCards,
   InlineErrorAlert,
@@ -44,27 +45,27 @@ import {
   useDeleteHarnessAgent,
   useHarnessAgents,
 } from './useAgents'
-import {
-  useOpenClawAgents,
-  useOpenClawMutations,
-  useOpenClawStatus,
-} from './useOpenClaw'
+import { useOpenClawAgents, useOpenClawMutations } from './useOpenClaw'
 
 export const AgentsPage: FC = () => {
   const navigate = useNavigate()
-  const {
-    status,
-    loading: statusLoading,
-    error: statusError,
-    refetch: refetchStatus,
-  } = useOpenClawStatus()
   const { providers, defaultProviderId } = useLlmProviders()
   const {
     adapters,
     loading: adaptersLoading,
     error: adaptersError,
-    refetch: refetchAdapters,
   } = useAgentAdapters()
+
+  // The harness listing now carries the gateway lifecycle snapshot
+  // alongside the agents — one polling source for everything the
+  // agents page renders. The legacy `/claw/status` poll is dead from
+  // this surface; the chat-panel layout still uses it for now.
+  const {
+    harnessAgents,
+    gateway: status,
+    loading: harnessAgentsLoading,
+    error: harnessAgentsError,
+  } = useHarnessAgents()
 
   const openClawAgentsEnabled =
     status?.status === 'running' && status.controlPlaneStatus === 'connected'
@@ -72,14 +73,7 @@ export const AgentsPage: FC = () => {
     agents: openClawAgents,
     loading: openClawAgentsLoading,
     error: openClawAgentsError,
-    refetch: refetchOpenClawAgents,
   } = useOpenClawAgents(openClawAgentsEnabled)
-  const {
-    harnessAgents,
-    loading: harnessAgentsLoading,
-    error: harnessAgentsError,
-    refetch: refetchHarnessAgents,
-  } = useHarnessAgents()
   const createHarnessAgent = useCreateHarnessAgent()
   const deleteHarnessAgent = useDeleteHarnessAgent()
   const {
@@ -87,7 +81,6 @@ export const AgentsPage: FC = () => {
     createAgent: createOpenClawAgent,
     deleteAgent: deleteOpenClawAgent,
     startOpenClaw,
-    stopOpenClaw,
     restartOpenClaw,
     reconnectOpenClaw,
     actionInProgress,
@@ -158,41 +151,67 @@ export const AgentsPage: FC = () => {
     openClawAgentsEnabled,
     openClawAgents,
   )
-  const agentListItems = useMemo(
-    () => [
-      ...visibleOpenClawAgents.map((agent) =>
+  const agentListItems = useMemo(() => {
+    // Dual-created OpenClaw agents (and the backfilled `main`/orphans
+    // post Step 9) live in both `/claw/agents` and `/agents` under the
+    // same id. Prefer the harness entry — it carries adapter/model/
+    // reasoning/lastUsedAt/status that the chat path actually uses —
+    // and drop the legacy duplicate so the rail doesn't show every
+    // OpenClaw agent twice.
+    const harnessIds = new Set(harnessAgents.map((agent) => agent.id))
+    const dedupedOpenClawAgents = visibleOpenClawAgents.filter(
+      (agent) => !harnessIds.has(agent.agentId),
+    )
+    return [
+      ...dedupedOpenClawAgents.map((agent) =>
         toOpenClawListItem(agent, openClawManageable),
       ),
       ...harnessAgents.map(toHarnessListItem),
-    ],
-    [harnessAgents, openClawManageable, visibleOpenClawAgents],
-  )
+    ]
+  }, [harnessAgents, openClawManageable, visibleOpenClawAgents])
+  // Lookup map so AgentList can render adapter chips, reasoning, etc.
+  // Computed up here to keep all hooks above the early returns below.
+  const harnessAgentLookup = useMemo(() => {
+    const map = new Map<string, HarnessAgent>()
+    for (const agent of harnessAgents) map.set(agent.id, agent)
+    return map
+  }, [harnessAgents])
+  // Activity map keyed by agentId. Sourced from the harness listing's
+  // server-side enrichment (`status` + `lastUsedAt`). Legacy gateway
+  // agents that don't have a harness record yet (rare post-backfill)
+  // simply miss from the map and render with the default `unknown`
+  // dot until reconciliation picks them up.
+  const agentActivity = useMemo(() => {
+    const map: Record<
+      string,
+      {
+        status: 'working' | 'idle' | 'asleep' | 'error'
+        lastUsedAt: number | null
+      }
+    > = {}
+    for (const agent of harnessAgents) {
+      if (!agent.status) continue
+      map[agent.id] = {
+        status: agent.status,
+        lastUsedAt: agent.lastUsedAt ?? null,
+      }
+    }
+    return map
+  }, [harnessAgents])
   const inlineError = getInlineError({
     lifecyclePending,
     pageError,
-    statusError,
     openClawAgentsError,
     adaptersError,
     harnessAgentsError,
   })
   const agentsLoading = getAgentsLoading({
-    statusLoading,
     adaptersLoading,
     harnessAgentsLoading,
-    openClawAgentsEnabled,
     openClawAgentsLoading,
   })
   const creatingAgent = creatingOpenClawAgent || createHarnessAgent.isPending
   const deletingAgent = deletingOpenClawAgent || deleteHarnessAgent.isPending
-
-  const refreshAll = async () => {
-    await Promise.all([
-      refetchStatus(),
-      refetchAdapters(),
-      refetchHarnessAgents(),
-      openClawAgentsEnabled ? refetchOpenClawAgents() : Promise.resolve(),
-    ])
-  }
 
   const handleHarnessAdapterChange = (adapter: HarnessAgentAdapter) => {
     const descriptor = adapters.find((entry) => entry.id === adapter)
@@ -239,7 +258,9 @@ export const AgentsPage: FC = () => {
     )
   }
 
-  if (statusLoading && !status) {
+  // First-paint loader: until the harness listing has resolved at
+  // least once we don't know which adapters / agents to render.
+  if (harnessAgentsLoading && !status) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -255,27 +276,18 @@ export const AgentsPage: FC = () => {
   const recoveryDetail = status ? getRecoveryDetail(status) : null
   const controlPlaneCopy = getControlPlaneCopyForStatus(status)
 
+  // Bar only makes sense when the gateway is meaningfully alive AND
+  // there's at least one OpenClaw agent in the merged list. Hide it
+  // for Claude/Codex-only setups so the page stays uncluttered.
+  const showGatewayStatusBar =
+    status?.status === 'running' &&
+    (visibleOpenClawAgents.length > 0 ||
+      harnessAgents.some((agent) => agent.adapter === 'openclaw'))
+
   return (
     <div className="min-h-full bg-background px-6 py-8">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-        <AgentsPageHeader
-          actionInProgress={actionInProgress}
-          controlPlaneBusy={gatewayUiState.controlPlaneBusy}
-          reconnecting={reconnecting}
-          status={status}
-          onCreateAgent={() => setCreateOpen(true)}
-          onOpenTerminal={() => setShowTerminal(true)}
-          onReconnect={() => {
-            void runWithPageErrorHandling(reconnectOpenClaw)
-          }}
-          onRefresh={() => void refreshAll()}
-          onRestart={() => {
-            void runWithPageErrorHandling(restartOpenClaw)
-          }}
-          onStop={() => {
-            void runWithPageErrorHandling(stopOpenClaw)
-          }}
-        />
+      <div className="fade-in slide-in-from-bottom-5 mx-auto flex w-full max-w-5xl animate-in flex-col gap-6 duration-500">
+        <AgentsHeader onCreateAgent={() => setCreateOpen(true)} />
 
         {lifecycleBanner ? <LifecycleAlert message={lifecycleBanner} /> : null}
 
@@ -315,11 +327,23 @@ export const AgentsPage: FC = () => {
           }}
         />
 
+        {showGatewayStatusBar ? (
+          <GatewayStatusBar
+            status={status}
+            actionInProgress={actionInProgress}
+            onOpenTerminal={() => setShowTerminal(true)}
+            onRestart={() => {
+              void runWithPageErrorHandling(restartOpenClaw)
+            }}
+          />
+        ) : null}
+
         <AgentList
           agents={agentListItems}
+          activity={agentActivity}
+          harnessAgentLookup={harnessAgentLookup}
           loading={agentsLoading}
           deletingAgentKey={deletingAgent ? deletingAgentKey : null}
-          onChatAgent={(agent) => navigate(`/agents/${agent.agentId}`)}
           onCreateAgent={() => setCreateOpen(true)}
           onDeleteAgent={(agent) => {
             void handleDelete(agent)

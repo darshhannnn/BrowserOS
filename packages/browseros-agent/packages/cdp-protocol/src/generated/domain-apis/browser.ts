@@ -47,9 +47,6 @@ import type {
   GetWindowForTargetResult,
   GetWindowsResult,
   GrantPermissionsParams,
-  HideTabParams,
-  HideTabResult,
-  HideWindowParams,
   MoveTabGroupParams,
   MoveTabGroupResult,
   MoveTabParams,
@@ -65,7 +62,6 @@ import type {
   SetWindowBoundsParams,
   ShowTabParams,
   ShowTabResult,
-  ShowWindowParams,
   UnpinTabParams,
   UnpinTabResult,
   UpdateTabGroupParams,
@@ -80,8 +76,6 @@ export interface BrowserApi {
   createWindow(params?: CreateWindowParams): Promise<CreateWindowResult>
   closeWindow(params: CloseWindowParams): Promise<void>
   activateWindow(params: ActivateWindowParams): Promise<void>
-  showWindow(params: ShowWindowParams): Promise<void>
-  hideWindow(params: HideWindowParams): Promise<void>
   getTabs(params?: GetTabsParams): Promise<GetTabsResult>
   getActiveTab(params?: GetActiveTabParams): Promise<GetActiveTabResult>
   getTabInfo(params?: GetTabInfoParams): Promise<GetTabInfoResult>
@@ -93,7 +87,6 @@ export interface BrowserApi {
   pinTab(params?: PinTabParams): Promise<PinTabResult>
   unpinTab(params?: UnpinTabParams): Promise<UnpinTabResult>
   showTab(params?: ShowTabParams): Promise<ShowTabResult>
-  hideTab(params?: HideTabParams): Promise<HideTabResult>
   getTabGroups(params?: GetTabGroupsParams): Promise<GetTabGroupsResult>
   createTabGroup(params: CreateTabGroupParams): Promise<CreateTabGroupResult>
   updateTabGroup(params: UpdateTabGroupParams): Promise<UpdateTabGroupResult>

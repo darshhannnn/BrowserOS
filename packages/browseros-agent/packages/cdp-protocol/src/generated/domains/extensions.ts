@@ -6,8 +6,14 @@ export type StorageArea = 'session' | 'local' | 'sync' | 'managed'
 
 // ══ Commands ══
 
+export interface TriggerActionParams {
+  id: string
+  targetId: string
+}
+
 export interface LoadUnpackedParams {
   path: string
+  enableInIncognito?: boolean
 }
 
 export interface LoadUnpackedResult {

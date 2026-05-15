@@ -69,6 +69,7 @@ export function createProtocolApi(send: RawSend, on: RawOn): ProtocolApi {
     Preload: createDomainProxy('Preload', send, on),
     Security: createDomainProxy('Security', send, on),
     ServiceWorker: createDomainProxy('ServiceWorker', send, on),
+    SmartCardEmulation: createDomainProxy('SmartCardEmulation', send, on),
     Storage: createDomainProxy('Storage', send, on),
     SystemInfo: createDomainProxy('SystemInfo', send, on),
     Target: createDomainProxy('Target', send, on),

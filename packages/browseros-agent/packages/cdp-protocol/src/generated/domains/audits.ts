@@ -33,8 +33,6 @@ export type CookieExclusionReason =
   | 'ExcludeSameSiteNoneInsecure'
   | 'ExcludeSameSiteLax'
   | 'ExcludeSameSiteStrict'
-  | 'ExcludeInvalidSameParty'
-  | 'ExcludeSamePartyCrossPartyContext'
   | 'ExcludeDomainNonASCII'
   | 'ExcludeThirdPartyCookieBlockedInFirstPartySet'
   | 'ExcludeThirdPartyPhaseout'
@@ -286,6 +284,14 @@ export type UnencodedDigestError =
   | 'IncorrectDigestType'
   | 'IncorrectDigestLength'
 
+export type ConnectionAllowlistError =
+  | 'InvalidHeader'
+  | 'MoreThanOneList'
+  | 'ItemNotInnerList'
+  | 'InvalidAllowlistItemType'
+  | 'ReportingEndpointNotToken'
+  | 'InvalidUrlPattern'
+
 export interface AttributionReportingIssueDetails {
   violationType: AttributionReportingIssueType
   request?: AffectedRequest
@@ -320,6 +326,11 @@ export interface SRIMessageSignatureIssueDetails {
 
 export interface UnencodedDigestIssueDetails {
   error: UnencodedDigestError
+  request: AffectedRequest
+}
+
+export interface ConnectionAllowlistIssueDetails {
+  error: ConnectionAllowlistError
   request: AffectedRequest
 }
 
@@ -563,6 +574,7 @@ export type InspectorIssueCode =
   | 'ElementAccessibilityIssue'
   | 'SRIMessageSignatureIssue'
   | 'UnencodedDigestIssue'
+  | 'ConnectionAllowlistIssue'
   | 'UserReidentificationIssue'
   | 'PermissionElementIssue'
 
@@ -592,6 +604,7 @@ export interface InspectorIssueDetails {
   elementAccessibilityIssueDetails?: ElementAccessibilityIssueDetails
   sriMessageSignatureIssueDetails?: SRIMessageSignatureIssueDetails
   unencodedDigestIssueDetails?: UnencodedDigestIssueDetails
+  connectionAllowlistIssueDetails?: ConnectionAllowlistIssueDetails
   userReidentificationIssueDetails?: UserReidentificationIssueDetails
   permissionElementIssueDetails?: PermissionElementIssueDetails
 }

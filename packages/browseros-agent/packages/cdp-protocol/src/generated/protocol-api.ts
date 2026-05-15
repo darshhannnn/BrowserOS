@@ -48,6 +48,7 @@ import type { RuntimeApi } from './domain-apis/runtime'
 import type { SchemaApi } from './domain-apis/schema'
 import type { SecurityApi } from './domain-apis/security'
 import type { ServiceWorkerApi } from './domain-apis/service-worker'
+import type { SmartCardEmulationApi } from './domain-apis/smart-card-emulation'
 import type { StorageApi } from './domain-apis/storage'
 import type { SystemInfoApi } from './domain-apis/system-info'
 import type { TargetApi } from './domain-apis/target'
@@ -99,6 +100,7 @@ export interface ProtocolApi {
   readonly Preload: PreloadApi
   readonly Security: SecurityApi
   readonly ServiceWorker: ServiceWorkerApi
+  readonly SmartCardEmulation: SmartCardEmulationApi
   readonly Storage: StorageApi
   readonly SystemInfo: SystemInfoApi
   readonly Target: TargetApi

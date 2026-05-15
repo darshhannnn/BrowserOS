@@ -8,12 +8,14 @@ import type {
   LoadUnpackedResult,
   RemoveStorageItemsParams,
   SetStorageItemsParams,
+  TriggerActionParams,
   UninstallParams,
 } from '../domains/extensions'
 
 export interface ExtensionsApi {
   // ── Commands ──
 
+  triggerAction(params: TriggerActionParams): Promise<void>
   loadUnpacked(params: LoadUnpackedParams): Promise<LoadUnpackedResult>
   uninstall(params: UninstallParams): Promise<void>
   getStorageItems(params: GetStorageItemsParams): Promise<GetStorageItemsResult>

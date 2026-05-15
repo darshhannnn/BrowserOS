@@ -342,6 +342,14 @@
       "types": "./src/generated/domain-apis/service-worker.ts",
       "default": "./src/generated/domain-apis/service-worker.ts"
     },
+    "./domains/smart-card-emulation": {
+      "types": "./src/generated/domains/smart-card-emulation.ts",
+      "default": "./src/generated/domains/smart-card-emulation.ts"
+    },
+    "./domain-apis/smart-card-emulation": {
+      "types": "./src/generated/domain-apis/smart-card-emulation.ts",
+      "default": "./src/generated/domain-apis/smart-card-emulation.ts"
+    },
     "./domains/storage": {
       "types": "./src/generated/domains/storage.ts",
       "default": "./src/generated/domains/storage.ts"

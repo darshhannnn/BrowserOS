@@ -62,6 +62,28 @@ src/generated/
 
 Types are auto-generated from the CDP protocol specification. The generated output lives in `src/generated/` and should not be edited manually.
 
+1. Build Chromium so the generated DevTools protocol JSON exists:
+
+   ```sh
+   autoninja -C out/Default_arm64 chrome
+   ```
+
+2. From this repository root, point `CDP_PROTOCOL_JSON` at Chromium's generated protocol file:
+
+   ```sh
+   CDP_PROTOCOL_JSON=/path/to/chromium/src/out/Default_arm64/gen/third_party/blink/public/devtools_protocol/protocol.json bun run gen:cdp
+   ```
+
+   You can also copy `.env.example` to `.env` and set `CDP_PROTOCOL_JSON` there; Bun loads `.env` automatically when running the codegen script.
+
+3. Review and commit all regenerated files:
+
+   ```sh
+   git status --short packages/cdp-protocol package.json scripts/codegen
+   ```
+
+   New CDP domains create new files under both `src/generated/domains/` and `src/generated/domain-apis/`. Make sure those files are tracked along with `packages/cdp-protocol/package.json`, `protocol-api.ts`, and `create-api.ts`.
+
 ## License
 
 [AGPL-3.0-or-later](../../../../LICENSE)

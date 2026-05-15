@@ -583,6 +583,7 @@ export type BackForwardCacheNotRestoredReason =
   | 'SharedWorkerMessage'
   | 'SharedWorkerWithNoActiveClient'
   | 'WebLocks'
+  | 'WebLocksContention'
   | 'WebHID'
   | 'WebBluetooth'
   | 'WebShare'

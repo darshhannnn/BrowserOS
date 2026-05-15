@@ -166,14 +166,6 @@ export interface ActivateWindowParams {
   windowId: WindowID
 }
 
-export interface ShowWindowParams {
-  windowId: WindowID
-}
-
-export interface HideWindowParams {
-  windowId: WindowID
-}
-
 export interface GetTabsParams {
   windowId?: WindowID
   includeHidden?: boolean
@@ -206,7 +198,6 @@ export interface CreateTabParams {
   index?: number
   background?: boolean
   pinned?: boolean
-  hidden?: boolean
   browserContextId?: BrowserContextID
 }
 
@@ -271,15 +262,6 @@ export interface ShowTabParams {
 }
 
 export interface ShowTabResult {
-  tab: TabInfo
-}
-
-export interface HideTabParams {
-  targetId?: TargetID
-  tabId?: TabID
-}
-
-export interface HideTabResult {
   tab: TabInfo
 }
 

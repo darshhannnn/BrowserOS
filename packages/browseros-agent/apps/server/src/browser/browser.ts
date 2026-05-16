@@ -62,6 +62,12 @@ export interface WindowInfo {
   activeTabId?: number
 }
 
+export interface SetWindowVisibilityResult {
+  window: WindowInfo
+  replaced: boolean
+  previousWindowId: number
+}
+
 interface TabInfo {
   tabId: number
   targetId: string
@@ -1457,6 +1463,26 @@ export class Browser {
 
   async activateWindow(windowId: number): Promise<void> {
     await this.cdp.Browser.activateWindow({ windowId })
+  }
+
+  /**
+   * Changes a window between hidden and visible states.
+   * BrowserOS may replace the underlying window, so callers must use the returned window ID.
+   */
+  async setWindowVisibility(
+    windowId: number,
+    opts: { visible: boolean; activate?: boolean },
+  ): Promise<SetWindowVisibilityResult> {
+    const result = await this.cdp.Browser.setWindowVisibility({
+      windowId,
+      visible: opts.visible,
+      ...(opts.activate !== undefined && { activate: opts.activate }),
+    })
+    return {
+      window: result.window as WindowInfo,
+      replaced: result.replaced,
+      previousWindowId: result.previousWindowId,
+    }
   }
 
   async showPage(

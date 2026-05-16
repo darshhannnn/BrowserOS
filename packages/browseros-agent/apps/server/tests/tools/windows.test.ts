@@ -1,11 +1,14 @@
 import { describe, it } from 'bun:test'
 import assert from 'node:assert'
+import type { Browser } from '../../src/browser/browser'
+import { executeTool } from '../../src/tools/framework'
 import {
   activate_window,
   close_window,
   create_hidden_window,
   create_window,
   list_windows,
+  set_window_visibility,
 } from '../../src/tools/windows'
 import { withBrowser } from '../__helpers__/with-browser'
 
@@ -21,6 +24,19 @@ function textOf(result: {
 function structuredOf<T>(result: { structuredContent?: unknown }): T {
   assert.ok(result.structuredContent, 'Expected structuredContent')
   return result.structuredContent as T
+}
+
+function fakeWindow(
+  overrides: Partial<{ windowId: number; isVisible: boolean }>,
+) {
+  return {
+    windowId: overrides.windowId ?? 1,
+    windowType: 'normal' as const,
+    bounds: {},
+    isActive: false,
+    isVisible: overrides.isVisible ?? true,
+    tabCount: 0,
+  }
 }
 
 describe('window tools', () => {
@@ -105,4 +121,52 @@ describe('window tools', () => {
       assert.ok(!closeResult.isError, textOf(closeResult))
     })
   }, 60_000)
+
+  it('set_window_visibility returns replacement metadata and the new window ID', async () => {
+    const calls: Array<{
+      windowId: number
+      opts: { visible: boolean; activate?: boolean }
+    }> = []
+    const browser = {
+      setWindowVisibility: async (
+        windowId: number,
+        opts: { visible: boolean; activate?: boolean },
+      ) => {
+        calls.push({ windowId, opts })
+        return {
+          previousWindowId: windowId,
+          replaced: true,
+          window: fakeWindow({ windowId: 42, isVisible: true }),
+        }
+      },
+      listPages: async () => [],
+    } as unknown as Browser
+
+    const result = await executeTool(
+      set_window_visibility,
+      { windowId: 7, visible: true, activate: false },
+      { browser, directories: { workingDir: process.cwd() } },
+      AbortSignal.timeout(30_000),
+    )
+
+    assert.ok(!result.isError, textOf(result))
+    assert.ok(textOf(result).includes('New window ID: 42'))
+    assert.deepStrictEqual(calls, [
+      { windowId: 7, opts: { visible: true, activate: false } },
+    ])
+    const data = structuredOf<{
+      action: string
+      previousWindowId: number
+      newWindowId: number
+      replaced: boolean
+      window: { windowId: number; isVisible: boolean }
+    }>(result)
+
+    assert.strictEqual(data.action, 'set_window_visibility')
+    assert.strictEqual(data.previousWindowId, 7)
+    assert.strictEqual(data.newWindowId, 42)
+    assert.strictEqual(data.newWindowId, data.window.windowId)
+    assert.strictEqual(data.replaced, true)
+    assert.strictEqual(data.window.isVisible, true)
+  })
 })

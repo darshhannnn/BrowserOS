@@ -70,6 +70,7 @@ import {
   create_hidden_window,
   create_window,
   list_windows,
+  set_window_visibility,
 } from './windows'
 
 export const registry = createRegistry([
@@ -119,12 +120,13 @@ export const registry = createRegistry([
   save_screenshot,
   download_file,
 
-  // Windows (5)
+  // Windows (6)
   list_windows,
   create_window,
   create_hidden_window,
   close_window,
   activate_window,
+  set_window_visibility,
 
   // Bookmarks (6)
   get_bookmarks,

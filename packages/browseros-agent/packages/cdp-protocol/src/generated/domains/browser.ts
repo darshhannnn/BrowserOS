@@ -166,6 +166,18 @@ export interface ActivateWindowParams {
   windowId: WindowID
 }
 
+export interface SetWindowVisibilityParams {
+  windowId: WindowID
+  visible: boolean
+  activate?: boolean
+}
+
+export interface SetWindowVisibilityResult {
+  window: WindowInfo
+  replaced: boolean
+  previousWindowId: WindowID
+}
+
 export interface GetTabsParams {
   windowId?: WindowID
   includeHidden?: boolean

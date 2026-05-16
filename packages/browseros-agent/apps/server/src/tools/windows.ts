@@ -126,3 +126,45 @@ export const activate_window = defineManagementTool({
     response.data({ action: 'activate_window', windowId: args.windowId })
   },
 })
+
+export const set_window_visibility = defineManagementTool({
+  name: 'set_window_visibility',
+  description:
+    'Set a browser window visible or hidden. Returns the new window ID because BrowserOS may replace the window during the transition.',
+  input: z.object({
+    windowId: z.number().describe('Window ID to show or hide'),
+    visible: z.boolean().describe('Set true to show, false to hide'),
+    activate: z
+      .boolean()
+      .optional()
+      .describe(
+        'Activate (focus) the window after making it visible. Has no effect when visible is false.',
+      ),
+  }),
+  output: z.object({
+    action: z.literal('set_window_visibility'),
+    previousWindowId: z.number(),
+    newWindowId: z.number(),
+    replaced: z.boolean(),
+    window: windowInfoSchema,
+  }),
+  handler: async (args, ctx, response) => {
+    const result = await ctx.browser.setWindowVisibility(args.windowId, {
+      visible: args.visible,
+      activate: args.activate,
+    })
+    const newWindowId = result.window.windowId
+    const state = result.window.isVisible ? 'visible' : 'hidden'
+    response.text(
+      `Set window ${args.windowId} ${state}. New window ID: ${newWindowId}`,
+    )
+    response.data({
+      action: 'set_window_visibility',
+      previousWindowId: result.previousWindowId,
+      newWindowId,
+      replaced: result.replaced,
+      window: result.window,
+    })
+    response.includePages()
+  },
+})

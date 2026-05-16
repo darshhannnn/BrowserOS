@@ -60,6 +60,8 @@ import type {
   SetDownloadBehaviorParams,
   SetPermissionParams,
   SetWindowBoundsParams,
+  SetWindowVisibilityParams,
+  SetWindowVisibilityResult,
   ShowTabParams,
   ShowTabResult,
   UnpinTabParams,
@@ -76,6 +78,9 @@ export interface BrowserApi {
   createWindow(params?: CreateWindowParams): Promise<CreateWindowResult>
   closeWindow(params: CloseWindowParams): Promise<void>
   activateWindow(params: ActivateWindowParams): Promise<void>
+  setWindowVisibility(
+    params: SetWindowVisibilityParams,
+  ): Promise<SetWindowVisibilityResult>
   getTabs(params?: GetTabsParams): Promise<GetTabsResult>
   getActiveTab(params?: GetActiveTabParams): Promise<GetActiveTabResult>
   getTabInfo(params?: GetTabInfoParams): Promise<GetTabInfoResult>

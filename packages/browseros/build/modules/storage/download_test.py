@@ -18,19 +18,32 @@ from build.modules.storage.download import (
 
 class ExtractArtifactZipTest(unittest.TestCase):
     def test_extracts_declared_files_and_writes_metadata(self) -> None:
-        files = {
+        executable_files = {
             "resources/bin/browseros_server": b"server-binary",
-            "resources/bin/third_party/bun": b"bun-binary",
-            "resources/bin/third_party/rg": b"rg-binary",
-            "resources/bin/third_party/podman/podman": b"podman-binary",
-            "resources/bin/third_party/podman/gvproxy": b"gvproxy-binary",
+            "resources/bin/third_party/lima/bin/limactl": b"limactl-binary",
+            "resources/bin/third_party/linux/helper": b"linux-helper",
         }
+        data_files = {
+            (
+                "resources/bin/third_party/lima/share/lima/"
+                "lima-guestagent.Linux-aarch64.gz"
+            ): b"guest-agent",
+            "resources/vm/browseros-vm.yaml": b"vm-template",
+        }
+        files = executable_files | data_files
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             archive_path = temp_path / "artifact.zip"
             destination = temp_path / "output"
-            self._write_artifact_zip(archive_path, files)
+            self._write_artifact_zip(
+                archive_path,
+                files,
+                file_modes={
+                    relative_path: 0o755 for relative_path in executable_files
+                }
+                | {relative_path: 0o644 for relative_path in data_files},
+            )
 
             extracted_paths = extract_artifact_zip(archive_path, destination)
 
@@ -43,10 +56,40 @@ class ExtractArtifactZipTest(unittest.TestCase):
                 self.assertEqual(extracted_path.read_bytes(), content)
 
                 if os.name != "nt":
+                    mode = os.stat(extracted_path).st_mode
+                    if relative_path in data_files:
+                        self.assertFalse(
+                            mode & stat.S_IXUSR,
+                            f"{relative_path} should not be executable",
+                        )
+                        continue
+
                     self.assertTrue(
-                        os.stat(extracted_path).st_mode & stat.S_IXUSR,
+                        mode & stat.S_IXUSR,
                         f"{relative_path} should be executable",
                     )
+
+    def test_extracts_zip_members_without_unix_modes(self) -> None:
+        files = {
+            "resources/bin/browseros_server": b"server-binary",
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            archive_path = temp_path / "artifact.zip"
+            destination = temp_path / "output"
+            self._write_artifact_zip(archive_path, files)
+
+            extracted_paths = extract_artifact_zip(archive_path, destination)
+
+            self.assertEqual(len(extracted_paths), len(files))
+            extracted_path = destination / "resources/bin/browseros_server"
+            self.assertEqual(extracted_path.read_bytes(), b"server-binary")
+
+            if os.name != "nt":
+                mode = os.stat(extracted_path).st_mode
+                self.assertTrue(mode & stat.S_IRUSR)
+                self.assertFalse(mode & stat.S_IXUSR)
 
     def test_rejects_missing_declared_files(self) -> None:
         files = {
@@ -119,13 +162,18 @@ class ExtractArtifactZipTest(unittest.TestCase):
         archive_path: Path,
         files: dict[str, bytes],
         metadata_override: dict | None = None,
+        file_modes: dict[str, int] | None = None,
     ) -> None:
         metadata = metadata_override or self._build_metadata(files)
 
         with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
             archive.writestr(ARTIFACT_METADATA_NAME, json.dumps(metadata))
             for relative_path, content in files.items():
-                archive.writestr(relative_path, content)
+                info = zipfile.ZipInfo(relative_path)
+                mode = (file_modes or {}).get(relative_path)
+                if mode is not None:
+                    info.external_attr = mode << 16
+                archive.writestr(info, content)
 
     def _build_metadata(self, files: dict[str, bytes]) -> dict:
         return {

@@ -15,6 +15,7 @@ from ...common.context import Context
 from ...common.utils import (
     log_info,
     log_success,
+    log_warning,
     get_platform,
 )
 
@@ -79,7 +80,8 @@ def _extract_artifact_files(
         dest_path = destination.joinpath(*relative_path.parts)
 
         try:
-            source_file = archive.open(archive_member, "r")
+            archive_info = archive.getinfo(archive_member)
+            source_file = archive.open(archive_info, "r")
         except KeyError as exc:
             raise RuntimeError(
                 f"Artifact archive is missing declared file: {archive_member}"
@@ -108,8 +110,7 @@ def _extract_artifact_files(
                 f"expected {expected_sha256}, got {actual_sha256}"
             )
 
-        if _should_mark_executable(relative_path):
-            dest_path.chmod(dest_path.stat().st_mode | 0o755)
+        _restore_zip_file_mode(dest_path, archive_info)
 
         extracted_paths.append(dest_path)
 
@@ -151,12 +152,28 @@ def _normalize_artifact_path(raw_path: Any) -> PurePosixPath:
     return relative_path
 
 
-def _should_mark_executable(relative_path: PurePosixPath) -> bool:
-    parts = relative_path.parts
-    if get_platform() == "windows":
-        return False
+def _restore_zip_file_mode(dest_path: Path, archive_info: zipfile.ZipInfo) -> None:
+    """Restore Unix permission bits from a validated artifact member.
 
-    return len(parts) >= 2 and parts[0] == "resources" and parts[1] == "bin"
+    Server artifact extraction streams files manually for checksum validation,
+    bypassing zipfile's normal mode handling. The agent builder already stages
+    per-target executable bits before zipping, so extraction should preserve
+    those bits instead of inferring executability from path names.
+    """
+    if get_platform() == "windows":
+        return
+
+    mode = (archive_info.external_attr >> 16) & 0o777
+    if mode == 0:
+        parts = PurePosixPath(archive_info.filename).parts
+        if len(parts) >= 2 and parts[0] == "resources" and parts[1] == "bin":
+            log_warning(
+                "No Unix mode bits in zip entry "
+                f"{archive_info.filename}; leaving default permissions"
+            )
+        return
+
+    dest_path.chmod((dest_path.stat().st_mode & ~0o777) | mode)
 
 
 def _clear_destination(dest_path: Path) -> None:

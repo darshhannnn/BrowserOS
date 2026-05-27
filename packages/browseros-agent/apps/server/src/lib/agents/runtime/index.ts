@@ -33,6 +33,7 @@ export {
   prepareHermesContext,
 } from './hermes-container-runtime'
 export {
+  buildHostProcessProbeEnv,
   HostProcessAgentRuntime,
   type HostProcessAgentRuntimeDeps,
 } from './host-process-agent-runtime'

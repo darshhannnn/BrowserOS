@@ -1,0 +1,19 @@
+# Browser binaries
+.browsers/
+
+# ChromaDB vector store (runtime data)
+chroma_db/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Environment variables
+.env
+.env.*

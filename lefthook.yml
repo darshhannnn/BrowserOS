@@ -29,20 +29,7 @@ pre-push:
     branch-name:
       run: |
         branch=$(git rev-parse --abbrev-ref HEAD)
-        case "$branch" in
-          main|master)
-            exit 0
-            ;;
-          feat/*|fix/*|bugfix/*|hotfix/*|release/*|docs/*|refactor/*|test/*|chore/*|experiment/*)
-            ;;
-          *)
-            echo "Warning: Branch name '$branch' doesn't match recommended format."
-            echo "   Use: <type>/<short-description>"
-            echo "   Types: feat, fix, bugfix, hotfix, release, docs, refactor, test, chore, experiment"
-            echo "   Example: feat/add-auth, fix/login-crash"
-            echo ""
-            echo "   To rename your branch:"
-            echo "     git branch -m <new-name>"
-            echo "     git push -u origin <new-name>"
-            ;;
-        esac
+        if [ "$branch" = "main" ] || [ "$branch" = "master" ]; then
+          exit 0
+        fi
+        echo "Pushing branch: $branch"

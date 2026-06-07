@@ -34,3 +34,7 @@ packages/browseros/build/tools/
 .devtools/
 .omc/
 .llm/
+
+# my-agent runtime data
+**/chroma_db/
+**/.browsers/

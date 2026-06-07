@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AgentBrowser — Local AI Browser</title>
-  <meta name="description" content="A local agentic browser powered by Ollama models with persistent memory and a chat UI." />
+  <meta name="description" content="A local agentic browser powered by Ollama models with streaming responses, persistent memory, and a chat UI." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -46,7 +46,7 @@
     /* ─── Layout ─────────────────────────────── */
     #app {
       display: grid;
-      grid-template-columns: 380px 1fr;
+      grid-template-columns: 400px 1fr;
       grid-template-rows: 56px 1fr;
       height: 100vh;
     }
@@ -89,7 +89,6 @@
 
     .sep { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
 
-    /* Model selector */
     #model-select {
       background: var(--bg-glass);
       border: 1px solid var(--border);
@@ -100,10 +99,28 @@
       padding: 5px 10px;
       cursor: pointer;
       transition: border-color var(--transition);
-      max-width: 200px;
+      max-width: 220px;
     }
     #model-select option { background: #1a1a2e; }
     #model-select:hover, #model-select:focus { border-color: var(--accent); color: var(--text-1); outline: none; }
+    #model-select:focus { box-shadow: 0 0 0 2px rgba(99,102,241,0.2); }
+
+    /* Warmup button */
+    #warmup-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-3);
+      font-size: 11px;
+      padding: 4px 9px;
+      cursor: pointer;
+      transition: all var(--transition);
+      white-space: nowrap;
+    }
+    #warmup-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+    #warmup-btn.warming { color: var(--amber); border-color: var(--amber); animation: warmPulse 1s ease-in-out infinite; }
+    #warmup-btn.warm    { color: var(--green); border-color: var(--green); }
+    @keyframes warmPulse { 0%,100%{opacity:1} 50%{opacity:.5} }
 
     #status-bar {
       display: flex;
@@ -119,20 +136,31 @@
       box-shadow: 0 0 8px var(--green);
       transition: background 0.3s, box-shadow 0.3s;
     }
-    #status-dot.idle   { background: var(--green);  box-shadow: 0 0 8px var(--green);  animation: pulse 2.4s ease-in-out infinite; }
-    #status-dot.busy   { background: var(--amber); box-shadow: 0 0 8px var(--amber); animation: none; }
-    #status-dot.error  { background: var(--red);   box-shadow: 0 0 8px var(--red);   animation: none; }
+    #status-dot.idle     { background: var(--green);  box-shadow: 0 0 8px var(--green);  animation: pulse 2.4s ease-in-out infinite; }
+    #status-dot.busy     { background: var(--amber); box-shadow: 0 0 8px var(--amber); animation: none; }
+    #status-dot.stream   { background: var(--cyan);  box-shadow: 0 0 8px var(--cyan);  animation: streamPulse 0.7s ease-in-out infinite; }
+    #status-dot.error    { background: var(--red);   box-shadow: 0 0 8px var(--red);   animation: none; }
 
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50%       { opacity: 0.35; }
-    }
+    @keyframes pulse       { 0%,100%{opacity:1} 50%{opacity:.35} }
+    @keyframes streamPulse { 0%,100%{opacity:1} 50%{opacity:.5}  }
 
     #status-label {
       font-size: 12px;
       font-weight: 500;
       color: var(--text-2);
-      min-width: 64px;
+      min-width: 80px;
+    }
+
+    /* Speed indicator */
+    #speed-badge {
+      font-size: 10px;
+      color: var(--green);
+      font-family: 'JetBrains Mono', monospace;
+      background: rgba(34,197,94,0.08);
+      border: 1px solid rgba(34,197,94,0.2);
+      border-radius: 20px;
+      padding: 2px 8px;
+      display: none;
     }
 
     .memory-count {
@@ -146,7 +174,6 @@
       white-space: nowrap;
     }
 
-    /* Clear chat button */
     #clear-btn {
       background: transparent;
       border: 1px solid var(--border);
@@ -188,7 +215,7 @@
       display: flex;
       flex-direction: column;
       gap: 5px;
-      animation: slideUp 0.28s ease;
+      animation: slideUp 0.25s ease;
     }
     @keyframes slideUp {
       from { opacity: 0; transform: translateY(8px); }
@@ -220,15 +247,28 @@
       border: 1px solid var(--border);
       color: var(--text-1);
       border-bottom-left-radius: 4px;
+      transition: border-color 0.2s;
+    }
+    .msg.agent.streaming {
+      border-color: rgba(6,182,212,0.3);
+      box-shadow: 0 0 12px rgba(6,182,212,0.08);
     }
     .msg.agent:hover { border-color: rgba(99,102,241,0.22); }
 
-    /* Error message style */
     .msg.agent.is-error {
       border-color: rgba(239,68,68,0.3);
       background: rgba(239,68,68,0.06);
       color: #fca5a5;
     }
+
+    /* Cursor blink while streaming */
+    .streaming-cursor::after {
+      content: '▋';
+      color: var(--cyan);
+      animation: cursorBlink 0.7s step-end infinite;
+      margin-left: 1px;
+    }
+    @keyframes cursorBlink { 0%,100%{opacity:1} 50%{opacity:0} }
 
     /* Markdown inside agent messages */
     .msg.agent h1, .msg.agent h2, .msg.agent h3 {
@@ -272,7 +312,7 @@
       font-size: 13px;
     }
 
-    /* ─── Memory Badge ───────────────────────── */
+    /* ─── Badges ─────────────────────────────── */
     .memory-badge {
       display: inline-flex;
       align-items: center;
@@ -304,22 +344,13 @@
       white-space: nowrap;
     }
 
-    @keyframes fadeIn {
-      from { opacity: 0; transform: scale(0.92); }
-      to   { opacity: 1; transform: scale(1); }
-    }
+    @keyframes fadeIn { from{opacity:0;transform:scale(.92)} to{opacity:1;transform:scale(1)} }
 
     /* ─── Thinking dots ──────────────────────── */
-    .dots span {
-      display: inline-block;
-      animation: blink 1.4s infinite;
-    }
+    .dots span { display: inline-block; animation: blink 1.4s infinite; }
     .dots span:nth-child(2) { animation-delay: 0.2s; }
     .dots span:nth-child(3) { animation-delay: 0.4s; }
-    @keyframes blink {
-      0%,80%,100% { opacity: 0; }
-      40%          { opacity: 1; }
-    }
+    @keyframes blink { 0%,80%,100%{opacity:0} 40%{opacity:1} }
 
     /* ─── Nav-warning banner ─────────────────── */
     .nav-warn {
@@ -410,7 +441,7 @@
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
       padding: 22px 26px;
-      max-width: 460px;
+      max-width: 480px;
       width: 100%;
       transition: border-color var(--transition), box-shadow var(--transition);
     }
@@ -442,6 +473,32 @@
     .pill.green { background: rgba(34,197,94,0.08); border-color: rgba(34,197,94,0.2); color: #86efac; }
     .pill.amber { background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.2); color: #fde68a; }
     .pill.cyan  { background: rgba(6,182,212,0.08);  border-color: rgba(6,182,212,0.2);  color: #67e8f9; }
+    .pill.red   { background: rgba(239,68,68,0.08);  border-color: rgba(239,68,68,0.2);  color: #fca5a5; }
+
+    /* Models grid */
+    #models-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .model-pill {
+      font-size: 10.5px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      background: rgba(99,102,241,0.08);
+      border: 1px solid rgba(99,102,241,0.18);
+      color: #a5b4fc;
+      font-family: 'JetBrains Mono', monospace;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .model-pill:hover { background: rgba(99,102,241,0.18); border-color: var(--accent); }
+    .model-pill.active {
+      background: var(--accent-grd);
+      border-color: var(--accent);
+      color: white;
+    }
 
     #last-url-display {
       font-family: 'JetBrains Mono', monospace;
@@ -451,7 +508,20 @@
       margin-top: 5px;
     }
 
-    .tip-row { display: flex; gap: 10px; width: 100%; max-width: 460px; }
+    /* Stats bar */
+    #stats-bar {
+      display: flex;
+      gap: 14px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+    .stat {
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .stat-label { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: .05em; }
+    .stat-value { font-size: 13px; font-weight: 600; color: var(--text-1); font-family: 'JetBrains Mono', monospace; }
+
+    .tip-row { display: flex; gap: 10px; width: 100%; max-width: 480px; }
     .tip-card {
       flex: 1; background: var(--bg-glass);
       border: 1px solid var(--border); border-radius: var(--radius-md);
@@ -468,7 +538,6 @@
       padding: 1px 5px; border-radius: 3px; color: #a5b4fc;
     }
 
-    /* scroll */
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
@@ -484,15 +553,17 @@
       AgentBrowser
     </div>
     <div class="sep"></div>
-    <select id="model-select" title="Select active Ollama model">
-      <option value="qwen3.5-9b-agentic">Loading models…</option>
+    <select id="model-select" title="Select active Ollama model" onchange="onModelChange()">
+      <option value="">Loading models…</option>
     </select>
+    <button id="warmup-btn" onclick="warmupModel()" title="Pre-load model into VRAM for instant inference">⚡ Warm up</button>
     <button id="clear-btn" onclick="clearChat()" title="Clear chat history">✕ Clear</button>
     <div id="status-bar">
       <div id="status-dot" class="idle"></div>
       <span id="status-label">Idle</span>
+      <span id="speed-badge"></span>
     </div>
-    <div class="memory-count" id="mem-count">💾 Persistent memory</div>
+    <div class="memory-count" id="mem-count">💾 Memory</div>
   </header>
 
   <!-- ── Chat Panel ── -->
@@ -501,8 +572,8 @@
       <div class="msg-wrap agent">
         <div class="msg agent">
           <strong>👋 Welcome to AgentBrowser!</strong><br/>
-          Enter a URL and a goal below. I'll open the page with Playwright, extract text, and complete the task using your local Ollama model.<br/><br/>
-          Memory is <strong>persistent</strong> — past sessions are recalled automatically.
+          Enter a URL and a goal. I'll navigate the page with Playwright and stream a response from your local Ollama model in real-time.<br/><br/>
+          Hit <strong>⚡ Warm up</strong> first for instant responses — it pre-loads the model into GPU VRAM.
         </div>
       </div>
     </div>
@@ -522,12 +593,34 @@
   <main id="right-panel">
 
     <div class="info-card">
-      <h2>🧠 Local AI Stack</h2>
-      <div class="pill-list">
-        <span class="pill">Playwright</span>
-        <span class="pill green">ChromaDB ↔ Persistent</span>
-        <span class="pill cyan">Ollama Local</span>
-        <span class="pill amber">Flask Backend</span>
+      <h2>🧠 Local Models</h2>
+      <p style="font-size:11.5px;color:var(--text-3);margin-bottom:6px;">
+        Click a model to select it, then hit ⚡ Warm up to pre-load it into VRAM.
+      </p>
+      <div id="models-grid">
+        <span class="model-pill" style="opacity:.5">Loading…</span>
+      </div>
+    </div>
+
+    <div class="info-card" id="perf-card" style="display:none;">
+      <h2>⚡ Performance</h2>
+      <div id="stats-bar">
+        <div class="stat">
+          <span class="stat-label">Browse</span>
+          <span class="stat-value" id="stat-browse">—</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">First token</span>
+          <span class="stat-value" id="stat-first">—</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Total</span>
+          <span class="stat-value" id="stat-total">—</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Tokens</span>
+          <span class="stat-value" id="stat-tokens">—</span>
+        </div>
       </div>
     </div>
 
@@ -546,19 +639,8 @@
         </ul>
       </div>
       <div class="tip-card">
-        <div class="tip-title"><span>⚡</span> Memory</div>
-        <p>Similar past goals are recalled and injected into the AI prompt automatically.</p>
-      </div>
-    </div>
-
-    <div class="tip-row">
-      <div class="tip-card">
         <div class="tip-title"><span>🚫</span> Avoid</div>
-        <p>Google Search (CAPTCHA). Use direct URLs like <code>cricbuzz.com</code> or <code>bbc.com</code> instead.</p>
-      </div>
-      <div class="tip-card">
-        <div class="tip-title"><span>📝</span> Text Only</div>
-        <p>Local models use page text only — screenshots are not analyzed. Best for news, scores &amp; docs.</p>
+        <p>Google Search (CAPTCHA). Use direct URLs like <code>cricbuzz.com</code> or <code>bbc.com</code>.</p>
       </div>
     </div>
 
@@ -566,81 +648,152 @@
 </div>
 
 <script>
-  /* ─── marked config ─── */
   marked.setOptions({ breaks: true, gfm: true });
 
   /* ─── State ─── */
   let isBusy = false;
+  let allModels = [];
+  let perfStart = 0, browseEndTime = 0, firstTokenTime = 0, tokenCount = 0;
+  let currentController = null;
 
-  /* ─── Status helper ─── */
+  /* ─── Status ─── */
   function setStatus(label, type) {
-    const dot = document.getElementById('status-dot');
-    const lbl = document.getElementById('status-label');
-    dot.className = type;          // 'idle' | 'busy' | 'error'
-    lbl.textContent = label;
+    document.getElementById('status-dot').className = type;
+    document.getElementById('status-label').textContent = label;
+  }
+
+  function showSpeed(ms) {
+    const badge = document.getElementById('speed-badge');
+    badge.textContent = `${(ms/1000).toFixed(1)}s`;
+    badge.style.display = '';
+    setTimeout(() => { badge.style.display = 'none'; }, 5000);
+  }
+
+  /* ─── Models ─── */
+  async function loadModels() {
+    try {
+      const r = await fetch('/models');
+      const data = await r.json();
+      allModels = data.models || [];
+      if (allModels.length === 0) throw new Error('no models');
+
+      // Populate select
+      const sel = document.getElementById('model-select');
+      sel.innerHTML = '';
+      allModels.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m; opt.textContent = m;
+        sel.appendChild(opt);
+      });
+
+      // Render pill grid
+      renderModelPills();
+    } catch {
+      const sel = document.getElementById('model-select');
+      sel.innerHTML = '<option value="qwen3.5-9b-agentic">qwen3.5-9b-agentic</option>';
+      document.getElementById('models-grid').innerHTML =
+        '<span class="model-pill active">qwen3.5-9b-agentic</span>';
+    }
+  }
+
+  function renderModelPills() {
+    const grid = document.getElementById('models-grid');
+    const sel = document.getElementById('model-select');
+    grid.innerHTML = '';
+    allModels.forEach(m => {
+      const pill = document.createElement('span');
+      pill.className = 'model-pill' + (m === sel.value ? ' active' : '');
+      pill.textContent = m;
+      pill.onclick = () => {
+        sel.value = m;
+        onModelChange();
+      };
+      grid.appendChild(pill);
+    });
+  }
+
+  function onModelChange() {
+    renderModelPills();
+    // Reset warmup state
+    const btn = document.getElementById('warmup-btn');
+    btn.className = '';
+    btn.textContent = '⚡ Warm up';
+  }
+
+  async function warmupModel() {
+    const model = document.getElementById('model-select').value;
+    if (!model) return;
+    const btn = document.getElementById('warmup-btn');
+    btn.className = 'warming';
+    btn.textContent = '⏳ Loading…';
+    try {
+      await fetch('/warmup', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ model }),
+      });
+      // Ping every 2s until model responds fast
+      const start = Date.now();
+      const checkWarm = async () => {
+        try {
+          const r = await fetch('/warmup', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ model }),
+          });
+          const elapsed = Date.now() - start;
+          if (elapsed > 4000) {
+            btn.className = 'warm';
+            btn.textContent = '✅ Ready';
+            return;
+          }
+        } catch {}
+        setTimeout(checkWarm, 2000);
+      };
+      setTimeout(checkWarm, 3000);
+    } catch {
+      btn.className = '';
+      btn.textContent = '⚡ Warm up';
+    }
   }
 
   /* ─── Message builder ─── */
   function addMsg(content, role, opts = {}) {
     const wrap = document.createElement('div');
     wrap.className = `msg-wrap ${role}`;
-
     const div = document.createElement('div');
     div.className = `msg ${role}${opts.isError ? ' is-error' : ''}`;
-
     if (opts.markdown) {
       div.innerHTML = marked.parse(content);
     } else {
       div.textContent = content;
     }
-
     wrap.appendChild(div);
     document.getElementById('messages').appendChild(wrap);
     div.scrollIntoView({ behavior: 'smooth', block: 'end' });
     return { wrap, div };
   }
 
-  function addThinking() {
+  function addThinking(label = 'Browsing page') {
     const wrap = document.createElement('div');
     wrap.className = 'msg-wrap agent';
     wrap.innerHTML = `<div class="msg agent thinking">
-      Navigating &amp; thinking<span class="dots"><span>.</span><span>.</span><span>.</span></span>
+      ${label}<span class="dots"><span>.</span><span>.</span><span>.</span></span>
     </div>`;
     document.getElementById('messages').appendChild(wrap);
     wrap.scrollIntoView({ behavior: 'smooth' });
     return wrap;
   }
 
-  /* ─── Clear chat ─── */
+  /* ─── Clear ─── */
   function clearChat() {
     if (isBusy) return;
-    const msgs = document.getElementById('messages');
-    msgs.innerHTML = `<div class="msg-wrap agent">
+    document.getElementById('messages').innerHTML = `<div class="msg-wrap agent">
       <div class="msg agent">Chat cleared. Ready for a new task!</div>
     </div>`;
     document.getElementById('last-session-card').style.display = 'none';
+    document.getElementById('perf-card').style.display = 'none';
     setStatus('Idle', 'idle');
-  }
-
-  /* ─── Load models ─── */
-  async function loadModels() {
-    try {
-      const r = await fetch('/models');
-      const data = await r.json();
-      const sel = document.getElementById('model-select');
-      sel.innerHTML = '';
-      const models = data.models || [];
-      if (models.length === 0) throw new Error('no models');
-      models.forEach(m => {
-        const opt = document.createElement('option');
-        opt.value = m; opt.textContent = m;
-        if (m.includes('qwen3.5-9b-agentic')) opt.selected = true;
-        sel.appendChild(opt);
-      });
-    } catch {
-      const sel = document.getElementById('model-select');
-      sel.innerHTML = '<option value="qwen3.5-9b-agentic">qwen3.5-9b-agentic (default)</option>';
-    }
   }
 
   /* ─── Auto-resize textarea ─── */
@@ -653,11 +806,11 @@
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   });
 
-  /* ─── Send ─── */
+  /* ─── Send (streaming) ─── */
   async function sendMessage() {
     if (isBusy) return;
-    const goal = goalInput.value.trim();
-    const url  = document.getElementById('url-input').value.trim();
+    const goal  = goalInput.value.trim();
+    const url   = document.getElementById('url-input').value.trim();
     const model = document.getElementById('model-select').value;
     if (!goal) { goalInput.focus(); return; }
 
@@ -665,71 +818,151 @@
     goalInput.value = '';
     goalInput.style.height = 'auto';
     document.getElementById('send-btn').disabled = true;
-    setStatus('Navigating…', 'busy');
+    setStatus('Browsing…', 'busy');
 
     addMsg(goal, 'user');
-    const thinkEl = addThinking();
+    const thinkEl = addThinking('Browsing page');
+    perfStart = Date.now();
+    tokenCount = 0;
+
+    // Create the streaming agent message up-front
+    const agentWrap = document.createElement('div');
+    agentWrap.className = 'msg-wrap agent';
+    agentWrap.style.display = 'none';
+    const agentDiv = document.createElement('div');
+    agentDiv.className = 'msg agent streaming streaming-cursor';
+    agentWrap.appendChild(agentDiv);
+    document.getElementById('messages').appendChild(agentWrap);
+
+    let rawText = '';
+    let meta = null;
 
     try {
-      setStatus('Invoking AI…', 'busy');
+      currentController = new AbortController();
       const res = await fetch('/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ goal, url, model }),
+        signal: currentController.signal,
       });
 
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`Server error ${res.status}: ${txt}`);
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      setStatus('Streaming…', 'stream');
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // keep incomplete line
+
+        for (const line of lines) {
+          if (line.startsWith('event: meta')) continue;
+          if (line.startsWith('event: done')) continue;
+
+          if (line.startsWith('data: ')) {
+            const payload = line.slice(6).trim();
+            if (!payload || payload === '{}') continue;
+
+            try {
+              const parsed = JSON.parse(payload);
+
+              // Meta event (first SSE)
+              if (typeof parsed === 'object' && parsed !== null && 'url_visited' in parsed) {
+                meta = parsed;
+                browseEndTime = Date.now();
+                thinkEl.remove();
+                agentWrap.style.display = '';
+
+                // Inject badges before text starts
+                if (meta.memory_hit && meta.memory_snippet) {
+                  const badge = document.createElement('div');
+                  badge.className = 'memory-badge';
+                  badge.textContent = `Memory: "${meta.memory_snippet.slice(0, 65)}…"`;
+                  agentWrap.insertBefore(badge, agentDiv);
+                }
+                setStatus('Generating…', 'stream');
+                continue;
+              }
+
+              // Token chunk
+              if (typeof parsed === 'string') {
+                if (tokenCount === 0) {
+                  firstTokenTime = Date.now();
+                }
+                tokenCount++;
+                rawText += parsed;
+
+                // Update message with markdown (throttled at every ~5 tokens)
+                agentDiv.innerHTML = marked.parse(rawText);
+                agentDiv.classList.add('streaming-cursor');
+                agentDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
+              }
+            } catch {
+              // Possibly a plain string token
+            }
+          }
+        }
       }
 
-      const data = await res.json();
-      thinkEl.remove();
+      // Finalize
+      agentDiv.classList.remove('streaming', 'streaming-cursor');
+      agentDiv.innerHTML = marked.parse(rawText || '(No response)');
 
-      const resultText = data.result || '(No response received)';
-      const isError = resultText.startsWith('❌') || resultText.startsWith('⚠️');
-
-      const { wrap } = addMsg(resultText, 'agent', { markdown: !isError, isError });
-
-      // Memory badge
-      if (data.memory_hit && data.memory_snippet) {
-        const badge = document.createElement('div');
-        badge.className = 'memory-badge';
-        badge.textContent = `Memory recalled: "${data.memory_snippet.slice(0, 65)}…"`;
-        wrap.insertBefore(badge, wrap.firstChild);
+      if (meta) {
+        if (meta.url_visited) {
+          const ub = document.createElement('div');
+          ub.className = 'url-badge';
+          ub.textContent = `🌐 ${meta.url_visited}`;
+          agentWrap.appendChild(ub);
+          document.getElementById('last-session-card').style.display = '';
+          document.getElementById('last-url-display').textContent = meta.url_visited;
+        }
+        if (meta.nav_warning) {
+          const wrapW = document.createElement('div');
+          wrapW.className = 'msg-wrap agent';
+          const warn = document.createElement('div');
+          warn.className = 'nav-warn';
+          warn.textContent = `⚠️ ${meta.nav_warning}`;
+          wrapW.appendChild(warn);
+          document.getElementById('messages').appendChild(wrapW);
+        }
       }
 
-      // URL badge
-      if (data.url_visited) {
-        const ub = document.createElement('div');
-        ub.className = 'url-badge';
-        ub.textContent = `🌐 ${data.url_visited}`;
-        wrap.appendChild(ub);
-
-        document.getElementById('last-session-card').style.display = '';
-        document.getElementById('last-url-display').textContent = data.url_visited;
-      }
-
-      // Navigation warning (separate, styled)
-      if (data.nav_warning) {
-        const wrapW = document.createElement('div');
-        wrapW.className = 'msg-wrap agent';
-        const warn = document.createElement('div');
-        warn.className = 'nav-warn';
-        warn.textContent = `⚠️ ${data.nav_warning}`;
-        wrapW.appendChild(warn);
-        document.getElementById('messages').appendChild(wrapW);
-      }
+      // Update perf stats
+      const totalTime = Date.now() - perfStart;
+      const browseTime = browseEndTime - perfStart;
+      const ttft = firstTokenTime - perfStart;
+      document.getElementById('stat-browse').textContent = `${(browseTime/1000).toFixed(1)}s`;
+      document.getElementById('stat-first').textContent  = `${(ttft/1000).toFixed(1)}s`;
+      document.getElementById('stat-total').textContent  = `${(totalTime/1000).toFixed(1)}s`;
+      document.getElementById('stat-tokens').textContent = tokenCount;
+      document.getElementById('perf-card').style.display = '';
+      showSpeed(totalTime);
 
       setStatus('Done', 'idle');
+
     } catch (err) {
-      thinkEl.remove();
-      addMsg(`❌ ${err.message}`, 'agent', { isError: true });
-      setStatus('Error', 'error');
-      // Auto-reset error status after 4s
-      setTimeout(() => { if (!isBusy) setStatus('Idle', 'idle'); }, 4000);
+      if (err.name === 'AbortError') {
+        agentDiv.classList.remove('streaming', 'streaming-cursor');
+        agentDiv.innerHTML = marked.parse(rawText + '\n\n*(stopped)*');
+        setStatus('Stopped', 'idle');
+      } else {
+        thinkEl?.remove();
+        agentWrap.remove();
+        addMsg(`❌ ${err.message}`, 'agent', { isError: true });
+        setStatus('Error', 'error');
+        setTimeout(() => { if (!isBusy) setStatus('Idle', 'idle'); }, 4000);
+      }
     } finally {
       isBusy = false;
+      currentController = null;
       document.getElementById('send-btn').disabled = false;
       goalInput.focus();
     }
